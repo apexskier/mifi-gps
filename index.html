@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>GPS data</title>
+</head>
+<body>
+    <h1>GPS</h1>
+
+    {{ with .Data }}
+    {{ with .RMC }}
+    <div>
+        <img height="200" width="200" src="https://maps.googleapis.com/maps/api/staticmap?center={{.Latitude}},{{.Longitude}}&zoom=15&size=200x200&scale=2&key=AIzaSyAhHyJ71uQW_12lgDgMakV4JgHKGYoj4fA" />
+        <img height="200" width="200" src="https://maps.googleapis.com/maps/api/staticmap?center={{.Latitude}},{{.Longitude}}&zoom=10&size=200x200&scale=2&key=AIzaSyAhHyJ71uQW_12lgDgMakV4JgHKGYoj4fA" />
+        <img height="200" width="200" src="https://maps.googleapis.com/maps/api/staticmap?center={{.Latitude}},{{.Longitude}}&zoom=6&size=200x200&scale=2&key=AIzaSyAhHyJ71uQW_12lgDgMakV4JgHKGYoj4fA" />
+        <img height="200" width="200" src="https://maps.googleapis.com/maps/api/staticmap?center={{.Latitude}},{{.Longitude}}&zoom=3&size=200x200&scale=2&key=AIzaSyAhHyJ71uQW_12lgDgMakV4JgHKGYoj4fA" />
+    </div>
+    <dl>
+        <dt>Time</dt><dd><time datetime="{{ .Date }}T{{ .Time }}">{{ .Date }} {{ .Time }}</time></dd>
+        <dt>Validity</dt><dd>{{ .Validity }}</dd>
+        <dt>Latitude</dt><dd>{{ dms .Latitude }}</dd>
+        <dt>Longitude</dt><dd>{{ dms .Longitude }}</dd>
+        <dt>Speed</dt><dd>{{ .Speed }}</dd>
+        <dt>Course</dt><dd>{{ .Course }}</dd>
+    </dl>
+    {{ end }}
+    {{ with .GGA }}
+    <h2>GPS Positioning System Fix Data</h2>
+    <dl>
+        <dt>Time</dt><dd><time>{{ .Time }}</time></dd>
+        <dt>Latitude GPS</dt><dd>{{ gps .Latitude }}</dd>
+        <dt>Longitude GPS</dt><dd>{{ gps .Longitude }}</dd>
+        <dt>Altitude</dt><dd>{{ .Altitude }}</dd>
+        <dt>Quality</dt><dd>{{ .Quality }}</dd>
+    </dl>
+    {{ end }}
+    {{ with .VTG }}
+    <h2>Track Made Good and Ground Speed</h2>
+    <dl>
+        <dt>True Direction</dt><dd>{{ .TrueTrack }}</dd>
+        <dt>Magnetic Direction</dt><dd>{{ .MagneticTrack }}</dd>
+        <dt>Speed</dt><dd>{{ .GroundSpeedKPH }} km/h</dd>
+    </dl>
+    {{ end }}
+    {{ end }}
+</body>
+</html>
