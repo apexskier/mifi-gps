@@ -37,6 +37,13 @@ func (c *Http0_9ConnWrapper) Read(b []byte) (int, error) {
 	return len(response), nil
 }
 
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
 type MifiNMEAData struct {
 	// fields will be nil before initialization
 
@@ -80,6 +87,13 @@ type templateData struct {
 	Data *MifiNMEAData
 }
 
+var ErrNoDataToLog = fmt.Errorf("no data to log")
+
+type queuedOp struct {
+	query string
+	args  []interface{}
+}
+
 func main() {
 	connStr := os.Getenv("MIFI_GPS_DBCONNSTR")
 	if connStr == "" {
@@ -92,8 +106,10 @@ func main() {
 
 	http.HandleFunc("/", func(rw http.ResponseWriter, r *http.Request) {
 		data.Lock()
-		indexTemplate.Execute(rw, templateData{Data: &data})
-		data.Unlock()
+		defer data.Unlock()
+		if err := indexTemplate.Execute(rw, templateData{Data: &data}); err != nil {
+			log.Printf("error rendering web page: %s\n", err)
+		}
 	})
 	wg.Add(1)
 	go func() {
@@ -105,6 +121,55 @@ func main() {
 		}
 	}()
 
+	queue := make([]queuedOp, 0)
+
+	queueLocation := func() error {
+		data.Lock()
+		defer data.Unlock()
+		// try to add a new piece of data
+		if data.RMC == nil || data.GGA == nil {
+			return ErrNoDataToLog
+		}
+		log.Print("queuing location")
+		t, err := time.Parse("02/01/06T15:04:05.9999", fmt.Sprintf("%sT%s", data.RMC.Date.String(), data.RMC.Time.String()))
+		if err != nil {
+			return fmt.Errorf("failed to parse RMC date time: %w", err)
+		}
+		queue = append(queue, queuedOp{
+			query: `INSERT INTO gps_logs(logged_at, gps_timestamp, gps_geometry, gps_speed, gps_course) VALUES($1, $2, ST_GeographyFromText($3), $4, $5)`,
+			args: []interface{}{
+				time.Now(),
+				t,
+				fmt.Sprintf("SRID=4326;POINTZ(%f %f %f)", data.RMC.Longitude, data.RMC.Latitude, data.GGA.Altitude),
+				data.RMC.Speed,
+				data.RMC.Course,
+			},
+		})
+		// don't infinitely take up memory
+		queue = queue[:max(len(queue)-100, len(queue))]
+		return nil
+	}
+
+	pushToDB := func(db *sql.DB) error {
+		log.Printf("pushing GPS data (%d in queue)\n", len(queue))
+		tx, err := db.Begin()
+		if err != nil {
+			return fmt.Errorf("failed to start db txn: %w", err)
+		}
+		for len(queue) != 0 {
+			// pop the first item in the queue, work through list
+			op := queue[0]
+			if _, err := tx.Exec(op.query, op.args...); err != nil {
+				return fmt.Errorf("failed to insert to DB: %w", err)
+			}
+			queue = queue[1:]
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("failed to commit db txn: %w", err)
+		}
+		return nil
+	}
+
 	wg.Add(1)
 	go func() {
 		db, err := sql.Open("postgres", connStr)
@@ -114,28 +179,66 @@ func main() {
 		log.Println("opened DB connection")
 		defer db.Close()
 		for {
-			if data.RMC == nil {
-				continue
+			if err := pushToDB(db); err != nil {
+				log.Printf("error pushing GPS data: %v\n", err)
 			}
-			t, err := time.Parse("02/01/06T15:04:05.9999", fmt.Sprintf("%sT%s", data.RMC.Date.String(), data.RMC.Time.String()))
-			if err != nil {
-				panic(err)
+			time.Sleep(time.Minute * 5)
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		time.Sleep(time.Second * 10)
+		for {
+			if err := queueLocation(); err != nil {
+				if errors.Is(err, ErrNoDataToLog) {
+					log.Println("skipped queuing, no data")
+				} else {
+					log.Printf("error queuing location: %v\n", err)
+				}
 			}
-			_, err = db.Exec(
-				`INSERT INTO gps_logs(logged_at, gps_timestamp, gps_geometry, gps_speed, gps_course) VALUES($1, $2, ST_GeographyFromText($3), $4, $5)`,
-				time.Now(),
-				t,
-				fmt.Sprintf("SRID=4326;POINTZ(%f %f %f)", data.RMC.Longitude, data.RMC.Latitude, data.GGA.Altitude),
-				data.RMC.Speed,
-				data.RMC.Course,
-			)
-			if err != nil {
-				panic(err)
-			}
-			log.Println("logged GPS data to DB")
 			time.Sleep(time.Minute * 15)
 		}
 	}()
+
+	parseGPS := func(line []byte) error {
+		s, err := nmea.Parse(string(line))
+		if err != nil {
+			return fmt.Errorf("failed to parse nmea line: %w", err)
+		}
+		data.Lock()
+		defer data.Unlock()
+		switch s.DataType() {
+		case nmea.TypeRMC:
+			// Recommended Minimum Specific GPS/Transit data
+			m := s.(nmea.RMC)
+			data.RMC = &m
+			// log.Println("parsed RMC	")
+		case nmea.TypeGGA:
+			// GPS Positioning System Fix Data
+			m := s.(nmea.GGA)
+			data.GGA = &m
+			// log.Println("parsed GGA")
+		case nmea.TypeGSA:
+			// GPS DOP and active satellites
+			m := s.(nmea.GSA)
+			data.GSA = &m
+			// log.Println("parsed GSA")
+		case nmea.TypeGSV:
+			// GPS Satellites in view
+			m := s.(nmea.GSV)
+			data.GSV = &m
+			// log.Println("parsed GSV")
+		case nmea.TypeVTG:
+			// Track Made Good and Ground Speed
+			m := s.(nmea.VTG)
+			data.VTG = &m
+			// log.Println("parsed VTG")
+		default:
+			return fmt.Errorf("unexpected nmea data type: %s", s.DataType())
+		}
+		return nil
+	}
 
 	getGPS := func() error {
 		http0_9Transport := &http.Transport{
@@ -176,37 +279,9 @@ func main() {
 			if string(line) == "" {
 				continue
 			}
-
-			s, err := nmea.Parse(string(line))
-			if err != nil {
-				return fmt.Errorf("failed to parse nmea line: %w", err)
+			if err := parseGPS(line); err != nil {
+				return fmt.Errorf("failed to parse gps line: %w", err)
 			}
-			data.Lock()
-			switch s.DataType() {
-			case nmea.TypeRMC:
-				// Recommended Minimum Specific GPS/Transit data
-				m := s.(nmea.RMC)
-				data.RMC = &m
-			case nmea.TypeGGA:
-				// GPS Positioning System Fix Data
-				m := s.(nmea.GGA)
-				data.GGA = &m
-			case nmea.TypeGSA:
-				// GPS DOP and active satellites
-				m := s.(nmea.GSA)
-				data.GSA = &m
-			case nmea.TypeGSV:
-				// GPS Satellites in view
-				m := s.(nmea.GSV)
-				data.GSV = &m
-			case nmea.TypeVTG:
-				// Track Made Good and Ground Speed
-				m := s.(nmea.VTG)
-				data.VTG = &m
-			default:
-				log.Printf("unexpected nmea data type: %s\n", s.DataType())
-			}
-			data.Unlock()
 		}
 	}
 
