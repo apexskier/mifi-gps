@@ -4,7 +4,9 @@ Setup:
 
 1. Set up the database with the [setup script](./db.psql).
 2. Build the binary `go build .`
-3. Run the binary with `./mifi-gps`, with the environment variable `CONN_STRING` set to your DB connection string (this'll have address and credentials).
+3. Run the binary with `./mifi-gps`, with the following environment variables set
+    * `MIFI_GPS_DBCONNSTR` set to your DB connection string (this'll have address and credentials)
+    * `MIFI_GPS_MAPSAPIKEY` set to a google static maps api key
 
 A web server will be exposed at http://0.0.0.0:8080. Protect it as you like.
 

@@ -9,10 +9,10 @@
     {{ with .Data }}
     {{ with .RMC }}
     <div>
-        <img height="200" width="200" src="https://maps.googleapis.com/maps/api/staticmap?center={{.Latitude}},{{.Longitude}}&zoom=15&size=200x200&scale=2&key=AIzaSyAhHyJ71uQW_12lgDgMakV4JgHKGYoj4fA" />
-        <img height="200" width="200" src="https://maps.googleapis.com/maps/api/staticmap?center={{.Latitude}},{{.Longitude}}&zoom=10&size=200x200&scale=2&key=AIzaSyAhHyJ71uQW_12lgDgMakV4JgHKGYoj4fA" />
-        <img height="200" width="200" src="https://maps.googleapis.com/maps/api/staticmap?center={{.Latitude}},{{.Longitude}}&zoom=6&size=200x200&scale=2&key=AIzaSyAhHyJ71uQW_12lgDgMakV4JgHKGYoj4fA" />
-        <img height="200" width="200" src="https://maps.googleapis.com/maps/api/staticmap?center={{.Latitude}},{{.Longitude}}&zoom=3&size=200x200&scale=2&key=AIzaSyAhHyJ71uQW_12lgDgMakV4JgHKGYoj4fA" />
+        <img height="200" width="200" src="https://maps.googleapis.com/maps/api/staticmap?center={{.Latitude}},{{.Longitude}}&zoom=15&size=200x200&scale=2&key={{ .MapsAPIKey }}" />
+        <img height="200" width="200" src="https://maps.googleapis.com/maps/api/staticmap?center={{.Latitude}},{{.Longitude}}&zoom=10&size=200x200&scale=2&key={{ .MapsAPIKey }}" />
+        <img height="200" width="200" src="https://maps.googleapis.com/maps/api/staticmap?center={{.Latitude}},{{.Longitude}}&zoom=6&size=200x200&scale=2&key={{ .MapsAPIKey }}" />
+        <img height="200" width="200" src="https://maps.googleapis.com/maps/api/staticmap?center={{.Latitude}},{{.Longitude}}&zoom=3&size=200x200&scale=2&key={{ .MapsAPIKey }}" />
     </div>
     <dl>
         <dt>Time</dt><dd><time datetime="{{ .Date }}T{{ .Time }}">{{ .Date }} {{ .Time }}</time></dd>

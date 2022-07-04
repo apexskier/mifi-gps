@@ -84,7 +84,8 @@ var rawIndexTemplate string
 var indexTemplate = template.Must(template.New("index.html").Funcs(funcMap).Parse(rawIndexTemplate))
 
 type templateData struct {
-	Data *MifiNMEAData
+	MapsAPIKey string
+	Data       *MifiNMEAData
 }
 
 var ErrNoDataToLog = fmt.Errorf("no data to log")
@@ -100,14 +101,23 @@ func main() {
 		panic("missing db connection string in env var MIFI_GPS_DBCONNSTR")
 	}
 
+	mapsAPIKey := os.Getenv("MIFI_GPS_MAPSAPIKEY")
+	if connStr == "" {
+		panic("missing maps api key in env var MIFI_GPS_MAPSAPIKEY")
+	}
+
 	data := MifiNMEAData{}
+	tmplData := templateData{
+		MapsAPIKey: mapsAPIKey,
+		Data:       &data,
+	}
 
 	var wg sync.WaitGroup
 
 	http.HandleFunc("/", func(rw http.ResponseWriter, r *http.Request) {
 		data.Lock()
 		defer data.Unlock()
-		if err := indexTemplate.Execute(rw, templateData{Data: &data}); err != nil {
+		if err := indexTemplate.Execute(rw, tmplData); err != nil {
 			log.Printf("error rendering web page: %s\n", err)
 		}
 	})
