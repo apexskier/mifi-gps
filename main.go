@@ -86,6 +86,8 @@ var indexTemplate = template.Must(template.New("index.html").Funcs(funcMap).Pars
 type templateData struct {
 	MapsAPIKey string
 	Data       *MifiNMEAData
+	QueueLen   int
+	LastPushed time.Time
 }
 
 var ErrNoDataToLog = fmt.Errorf("no data to log")
@@ -107,17 +109,20 @@ func main() {
 	}
 
 	data := &MifiNMEAData{}
-	tmplData := templateData{
-		MapsAPIKey: mapsAPIKey,
-		Data:       data,
-	}
+	queue := make([]queuedOp, 0)
+	var lastPushed time.Time
 
 	var wg sync.WaitGroup
 
 	http.HandleFunc("/", func(rw http.ResponseWriter, r *http.Request) {
 		data.Lock()
 		defer data.Unlock()
-		if err := indexTemplate.Execute(rw, tmplData); err != nil {
+		if err := indexTemplate.Execute(rw, templateData{
+			MapsAPIKey: mapsAPIKey,
+			Data:       data,
+			QueueLen:   len(queue),
+			LastPushed: lastPushed,
+		}); err != nil {
 			log.Printf("error rendering web page: %s\n", err)
 		}
 	})
@@ -130,8 +135,6 @@ func main() {
 			panic(err)
 		}
 	}()
-
-	queue := make([]queuedOp, 0)
 
 	queueLocation := func() error {
 		data.Lock()
@@ -177,6 +180,7 @@ func main() {
 		if err := tx.Commit(); err != nil {
 			return fmt.Errorf("failed to commit db txn: %w", err)
 		}
+		lastPushed = time.Now()
 		return nil
 	}
 

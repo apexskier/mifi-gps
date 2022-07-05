@@ -6,6 +6,13 @@
 <body>
     <h1>GPS</h1>
 
+    <div>
+        <dl>
+            <dt>Last pushed</dt><dd><time datetime="{{ .LastPushed.Format "2006-01-02T15:04:05Z07:00" }}">{{ .LastPushed }}</time></dd>
+            <dt>Queue Length</dt><dd>{{ .QueueLen }}</dd>
+        </dl>
+    </div>
+
     {{ with .Data }}
     {{ with .RMC }}
     <div>
