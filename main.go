@@ -106,10 +106,10 @@ func main() {
 		panic("missing maps api key in env var MIFI_GPS_MAPSAPIKEY")
 	}
 
-	data := MifiNMEAData{}
+	data := &MifiNMEAData{}
 	tmplData := templateData{
 		MapsAPIKey: mapsAPIKey,
-		Data:       &data,
+		Data:       data,
 	}
 
 	var wg sync.WaitGroup
@@ -222,12 +222,16 @@ func main() {
 		case nmea.TypeRMC:
 			// Recommended Minimum Specific GPS/Transit data
 			m := s.(nmea.RMC)
-			data.RMC = &m
+			if m.Validity == nmea.ValidRMC {
+				data.RMC = &m
+			}
 			// log.Println("parsed RMC	")
 		case nmea.TypeGGA:
 			// GPS Positioning System Fix Data
 			m := s.(nmea.GGA)
-			data.GGA = &m
+			if m.FixQuality != nmea.Invalid {
+				data.GGA = &m
+			}
 			// log.Println("parsed GGA")
 		case nmea.TypeGSA:
 			// GPS DOP and active satellites
@@ -267,7 +271,6 @@ func main() {
 		if err != nil {
 			return err
 		}
-		log.Println("connected to GPS HTTP stream")
 		client := &http.Client{
 			Transport: http0_9Transport,
 		}
@@ -275,6 +278,7 @@ func main() {
 		if err != nil {
 			return err
 		}
+		log.Println("connected to GPS HTTP stream")
 
 		reader := bufio.NewReader(res.Body)
 		for {
