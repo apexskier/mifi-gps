@@ -84,10 +84,11 @@ var rawIndexTemplate string
 var indexTemplate = template.Must(template.New("index.html").Funcs(funcMap).Parse(rawIndexTemplate))
 
 type templateData struct {
-	MapsAPIKey string
-	Data       *MifiNMEAData
-	QueueLen   int
-	LastPushed time.Time
+	MapsAPIKey         string
+	Data               *MifiNMEAData
+	QueueLen           int
+	LastSuccessfulPush time.Time
+	LastAttemptedPush  time.Time
 }
 
 var ErrNoDataToLog = fmt.Errorf("no data to log")
@@ -110,7 +111,8 @@ func main() {
 
 	data := &MifiNMEAData{}
 	queue := make([]queuedOp, 0)
-	var lastPushed time.Time
+	var lastSuccessfulPush time.Time
+	var lastAttemptedPush time.Time
 
 	var wg sync.WaitGroup
 
@@ -118,10 +120,11 @@ func main() {
 		data.Lock()
 		defer data.Unlock()
 		if err := indexTemplate.Execute(rw, templateData{
-			MapsAPIKey: mapsAPIKey,
-			Data:       data,
-			QueueLen:   len(queue),
-			LastPushed: lastPushed,
+			MapsAPIKey:         mapsAPIKey,
+			Data:               data,
+			QueueLen:           len(queue),
+			LastSuccessfulPush: lastSuccessfulPush,
+			LastAttemptedPush:  lastAttemptedPush,
 		}); err != nil {
 			log.Printf("error rendering web page: %s\n", err)
 		}
@@ -164,6 +167,9 @@ func main() {
 	}
 
 	pushToDB := func(db *sql.DB) error {
+		defer func() {
+			lastAttemptedPush = time.Now()
+		}()
 		log.Printf("pushing GPS data (%d in queue)\n", len(queue))
 		tx, err := db.Begin()
 		if err != nil {
@@ -180,7 +186,7 @@ func main() {
 		if err := tx.Commit(); err != nil {
 			return fmt.Errorf("failed to commit db txn: %w", err)
 		}
-		lastPushed = time.Now()
+		lastSuccessfulPush = time.Now()
 		return nil
 	}
 
